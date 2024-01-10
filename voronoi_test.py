@@ -11,6 +11,7 @@ print(vor.ridge_vertices)
 print(vor.vertices[vor.ridge_vertices[0]])
 # for i in vor.ridge_vertices:
 #     print(vor.vertices[i[0]], vor.vertices[i[1]])
+print(vor.points)
 print(vor.regions)
 print(vor.vertices)
 # fig = voronoi_plot_2d(vor)

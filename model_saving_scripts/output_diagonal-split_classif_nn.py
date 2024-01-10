@@ -18,8 +18,8 @@ model = tf.keras.Sequential([
 
 model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
 
-input = np.array([[-3, -4]])
+input = np.array([[0, 0]])
 output = model.predict(input)
 print(output)
 
-tf.saved_model.save(model, '../saved_models/diagonal-split_classif_nnet')
+# tf.saved_model.save(model, '../saved_models/diagonal-split_classif_nnet')
