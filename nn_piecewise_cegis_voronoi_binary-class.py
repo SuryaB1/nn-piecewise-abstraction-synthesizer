@@ -1,4 +1,3 @@
-from tqdm import tqdm
 from scipy.spatial import Voronoi, voronoi_plot_2d
 import numpy as np
 from random import randint
@@ -7,8 +6,8 @@ import ast
 
 from maraboupy import Marabou
 from maraboupy import MarabouCore
-from maraboupy import MarabouNetwork
-from maraboupy import MarabouUtils
+# from maraboupy import MarabouNetwork
+# from maraboupy import MarabouUtils
 
 # Test cases
 # TF_NN_FILENAME = "saved_models/sign_classif_nn_no-softmax" # 1D input
@@ -26,10 +25,6 @@ SYNTHESIS_UPPER_BOUND = 100
 
 MIN_COUNTEREX_DISTANCE_TO_RIDGE = 1 # minimum distance a counterexample can be from a segment boundary to be considered
 
-# Counterexample handling states
-SET_STATE = 0
-SPLIT_STATE = 1
-
 @dataclass
 class Hyperplane:
     coeffs: np.ndarray
@@ -41,7 +36,7 @@ class Hyperplane:
         return unscaled_distance / np.linalg.norm(self.coeffs)
 
 class VoronoiCell:
-    vor = None
+    vor = None # Voronoi tessellation object
     def __init__(self, centroid, ridges, output, neighbors):
         self.centroid = centroid
         self.ridges = ridges
@@ -53,19 +48,29 @@ class VoronoiCell:
     
     @staticmethod
     def compute_voronoi_tessellation(input_output_dict, add_points=False):
-        # Obtain Voronoi tessellation
+        # Obtain updated Voronoi tessellation object
         new_centroids = list(input_output_dict.keys())
+        first_new_centroid_idx = 0
         if add_points:
+            first_new_centroid_idx = len(vor.points)
             vor.add_points(new_centroids)
         else:
             vor = Voronoi(new_centroids, incremental=True)
 
         # Construct new cells from generated centroids and Voronoi tessellation
         new_cells = []
-        for i in range(len(vor.points)):
-            centr = vor.points[i]
+        for i in range(first_new_centroid_idx, len(new_centroids)):
+            centr = new_centroids[i]
             ridges, neighbors = VoronoiCell.get_ridges_and_neighbors_for_region(centr, i, vor.ridge_dict, vor.vertices)
             new_cells.append(VoronoiCell(centr, ridges, input_output_dict[centr], neighbors))
+
+        # Update new cells' neighbors
+        if add_points:
+            curr_num_new_cells = len(new_cells)
+            for c in range(curr_num_new_cells):
+                for n in c.neighbors:
+                    ridges, neighbors = VoronoiCell.get_ridges_and_neighbors_for_region(vor.points[n], n, vor.ridge_dict, vor.vertices)
+                    new_cells.append(VoronoiCell(centr, ridges, input_output_dict[centr], neighbors))
 
         return new_cells
     
@@ -73,30 +78,37 @@ class VoronoiCell:
     def get_ridges_and_neighbors_for_region(centroid, region_idx, ridge_dict, vertices): # Given a region and a list of all ridges, return the ridges of this region as Hyperplane objects
         neighbors = []
         ridges = []
+
+        # Centroid distribution characteristics
+        center = vor.points.mean(axis=0)
+        ptp_bound = vor.points.ptp(axis=0)
+
+        # point_idx, simplex
         for adj_region_pair, ridge in ridge_dict.items():
-            # if ridge[0] == -1:
-            #     ridge = ridge[1:]
+            # NOTE: below will only work for 2D case (based on scipy.spatial.Voronoi.voronoi_plot_2d())
+            region_pair_idx = adj_region_pair.index(region_idx)
+            if region_pair_idx >= 0: # if region_idx is part of this pair of regions/centroids/segments
+                ridge_hyperplane_vertices = vertices[ridge]
+                for vert_idx in np.where(ridge == -1):
+                    finite_end_ridge_vrtx = ridge[ridge >= 0][0]  # finite end of line segment ridge
 
-            # TODO: adapt for corner vertices (from open source):
-            # midpoint = vor.points[pointidx].mean(axis=0)
-            # direction = np.sign(np.dot(midpoint - center, n)) * n
-            # if (vor.furthest_site):
-            #     direction = -direction
-            # far_point = vor.vertices[i] + direction * ptp_bound.max()
+                    tangent = vor.points[adj_region_pair[1]] - vor.points[adj_region_pair[0]]  # tangent
+                    tangent /= np.linalg.norm(tangent)
+                    normal = np.array([-tangent[1], tangent[0]])  # normal
 
-            # infinite_segments.append([vor.vertices[i], far_point])
-                
-            if adj_region_pair[0] == region_idx: #TODO: include corner vertices (only one point for region)
-                ridges.append( VoronoiCell.get_hyperplane(centroid, ridge, vertices) )
-                neighbors.append(adj_region_pair[1])
-            elif adj_region_pair[1] == region_idx:
-                ridges.append( VoronoiCell.get_hyperplane(centroid, ridge, vertices) )
-                neighbors.append(adj_region_pair[0])
+                    midpoint = vor.points[adj_region_pair].mean(axis=0)
+                    direction = np.sign(np.dot(midpoint - center, normal)) * normal
+                    far_point = vor.vertices[finite_end_ridge_vrtx] + direction * ptp_bound.max()
+
+                    ridge_hyperplane_vertices[vert_idx] = far_point
+                    
+                ridges.append( VoronoiCell.get_hyperplane(centroid, ridge_hyperplane_vertices) )
+                neighbors.append(adj_region_pair[ int(not region_pair_idx) ])
 
         return ridges, neighbors
 
     @staticmethod
-    def get_hyperplane(centroid, ridge, vertices): # Given a ridge, return it as a hyperplane by solving Ax=b (where x is the coefficients) using least squares
+    def get_hyperplane(centroid, hyperplane_vertices): # Given a ridge, return it as a hyperplane by solving Ax=b (where x is the coefficients) using least squares
         # Arbitrary-dimension case
         # A = np.array(vertices[ridge]) # Array of vertices
         # b = np.ones(A.shape[0])
@@ -104,11 +116,11 @@ class VoronoiCell:
         # constant = 1
         
         # 2D case
-        y_delta = vertices[ridge][1][1] - vertices[ridge][0][1]
-        x_delta = vertices[ridge][1][0] - vertices[ridge][0][0]
+        y_delta = hyperplane_vertices[1][1] - hyperplane_vertices[0][1]
+        x_delta = hyperplane_vertices[1][0] - hyperplane_vertices[0][0]
         x_coeff = y_delta / x_delta if x_delta != 0 else -1
         y_coeff = int(x_delta != 0)
-        constant = y_coeff * vertices[ridge][0][1] - x_coeff * vertices[ridge][0][0]
+        constant = y_coeff * hyperplane_vertices[0][1] - x_coeff * hyperplane_vertices[0][0]
         coeffs = np.asarray([-1*x_coeff, y_coeff])
 
         if np.dot(coeffs, centroid) < constant: 
@@ -153,6 +165,8 @@ def construct_initial_ridge_vertices(input_vars):
     return init_ridges
 
 def form_query(network, output_var, curr_segment):
+    network.clearProperty()
+
     # Add inequalities for synthesis bounds to query (Note: not checking for when curr_segment.ridges length < network.inputVars[0][0], since segment could still be open)
     for var in network.inputVars[0][0]:
         network.setLowerBound(var, SYNTHESIS_LOWER_BOUND)
@@ -179,53 +193,39 @@ def main():
     network = Marabou.read_tf(filename = TF_NN_FILENAME, modelType="savedModel_v2")
     input_vars = network.inputVars[0][0]
     output_vars = network.outputVars[0].flatten()
-    VoronoiCell.input_dim = len(input_vars)
+    output_var = output_vars[0]
     init_datapoints = read_init_datapoints("diagonal-split_classif_nnet_sample_datapoints.txt", len(input_vars), len(output_vars))
     
-    # Loop 1: Synthesize piecewise mapping for each output variable (this algorithm assumes each output is an integer)
-    for i in tqdm(range(len(output_vars))):
-        debug_log(f"--- Searching piecewise mapping for Output Variable {i} ---")
-        output_var = output_vars[i]
+    # Note: This algorithm would be applied to a network with single output variable (for classification)
+    centroid_cell_map = dict() # Dictionary of all centroids in input space mapped to corresponding VoronoiCell objects
+    incomplete_segments = [] # Stack of centroids of segments left to search for counterexamples
+    
+    if init_datapoints:
+        new_cells = VoronoiCell.compute_voronoi_tessellation(init_datapoints)
+        for cell in new_cells:
+            incomplete_segments.append(cell.centroid)
+            centroid_cell_map[cell.centroid] = cell
+    else: # if no user-given initial datapoint, set input space as the initial Voronoi cell
+        init_centroid = tuple([ (SYNTHESIS_LOWER_BOUND + SYNTHESIS_UPPER_BOUND) / 2 for i in range(len(input_vars)) ])
+        network.clearProperty()
+        init_output = network.evaluateWithMarabou(init_centroid)
+        initial_cell = VoronoiCell(init_centroid, construct_initial_ridge_vertices(input_vars), int(init_output), [])
 
-        centroid_cell_map = dict() # Dictionary of all centroids in input space mapped to corresponding VoronoiCell objects
-        incomplete_segments = [] # Stack of centroids of segments left to search for counterexamples
+        centroid_cell_map[init_centroid] = initial_cell
+        incomplete_segments.append(initial_cell)
+
+    while incomplete_segments:
+        curr_segment = incomplete_segments.pop()
+
+        form_query(network, output_var, centroid_cell_map[curr_segment]) # Use current segment inequalities on Marabou
+        exitCode, vals, stats = network.solve(verbose=False) # Query Marabou for counterexamples within segment
         
-        if init_datapoints:
-            new_cells = VoronoiCell.compute_voronoi_tessellation(init_datapoints, i)
-            for cell in new_cells:
-                incomplete_segments.append(cell.centroid)
+        counterex_centroid = tuple([float(vals[var]) for var in input_vars])
+        if len(vals) and centroid_cell_map[curr_segment].compute_dist_to_closest_ridge(counterex_centroid) > MIN_COUNTEREX_DISTANCE_TO_RIDGE:
+            incomplete_segments.append(counterex_centroid)
+            updated_cells = VoronoiCell.compute_voronoi_tessellation( {counterex_centroid : int(vals[output_var])}, add_points=True )
+            for cell in updated_cells:
                 centroid_cell_map[cell.centroid] = cell
-        else: # if no user-given initial datapoint, set input space as the initial Voronoi cell
-            init_centroid = tuple([ (SYNTHESIS_LOWER_BOUND + SYNTHESIS_UPPER_BOUND) / 2 for i in range(len(input_vars)) ])
-            network.clearProperty()
-            init_output = network.evaluateWithMarabou(init_centroid)
-            initial_cell = VoronoiCell(init_centroid, construct_initial_ridge_vertices(input_vars), int(init_output), [])
-
-            centroid_cell_map[init_centroid] = initial_cell
-            incomplete_segments.append(initial_cell)
-
-        while incomplete_segments:
-            curr_segment = incomplete_segments.pop()
-
-            for counterex_handling_state in range(2):
-                network.clearProperty()
-                form_query(network, output_var, centroid_cell_map[curr_segment]) # Use current segment inequalities on Marabou
-                exitCode, vals, stats = network.solve(verbose=False) # Query Marabou for counterexamples within segment
-                
-                counterex_centroid = tuple([float(vals[var]) for var in input_vars])
-                if len(vals) and centroid_cell_map[curr_segment].compute_dist_to_closest_ridge(counterex_centroid) > MIN_COUNTEREX_DISTANCE_TO_RIDGE:
-                    if counterex_handling_state == SET_STATE:
-                        centroid_cell_map[curr_segment].output = int(vals[output_var])
-                    elif counterex_handling_state == SPLIT_STATE:
-                        centroid_cell_map[curr_segment].output = int(not int(vals[output_var]))
-
-                        incomplete_segments.append(counterex_centroid)
-                        updated_cells = VoronoiCell.compute_voronoi_tessellation({counterex_centroid:centroid_cell_map[curr_segment].output}, add_points=False)
-                        centroid_cell_map[counterex_centroid] = updated_cells[0]
-                else:
-                    break
-
-
 
 if __name__ == '__main__':
     main()
