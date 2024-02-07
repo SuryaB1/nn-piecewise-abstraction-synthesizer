@@ -4,10 +4,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # points = np.array([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]])
-points = np.array([[0, .2], [-.2, 1], [0, 2.1], [1.1, -.1], [1, 1], [0.9, 1.9],[2.2, -0.2], [1.9, 1.1], [2.1, 2.3]])
+# points = np.array([[0, .2], [-.2, 1], [0, 2.1], [1.1, -.1], [1, 1], [0.9, 1.9],[2.2, -0.2], [1.9, 1.1], [2.1, 2.3]])
+# points = np.array([[0, 0], [1, 0], [1, 1], [0, 1]])
+points = np.array([[0, 0.1, 0, 0.1], [1.1, 0, 1.2, 1.2], [1.1, 1, 2.1, 1.1], [0, 1, 0, 1]])
 # points = np.array([[0, 0.1, 0.1], [0, 1.2, 0], [0, 2.2, 0], [1.1, 0.3, 1], [1, 1.1, 1], [1.8, 2, 0.9], [2, 0, 1.8], [2, 1, 2], [2, 2, 2]])
 
-vor = Voronoi(points, incremental=True) # Use QJ for rectangular inputs
+vor = Voronoi(points, incremental=True) # Use Qz (qhull_options="Qz") for rectangular inputs (but cannot be in incremental mode); QJ will also work but it will randomly change input coordinates to overcome issue
 print(vor.ridge_vertices)
 print(vor.ridge_points)
 print(vor.vertices[vor.ridge_vertices[0]])
@@ -21,10 +23,10 @@ print(vor.vertices)
 # fig = voronoi_plot_2d(vor)
 # plt.show()
 
-print("---")
-vor.add_points([[2, 2]])
-print(vor.points)
-print(vor.vertices)
+# print("---")
+# vor.add_points([[2, 2]])
+# print(vor.points)
+# print(vor.vertices)
 
 # fig1 = voronoi_plot_2d(vor)
 # plt.show()
