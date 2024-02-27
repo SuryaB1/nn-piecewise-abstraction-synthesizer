@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tensorflow import keras
 import numpy as np
+import matplotlib.pyplot as plt
 
 # if in trapezoid, 0, otherwise 1
 model = tf.keras.Sequential([
@@ -26,8 +27,22 @@ model = tf.keras.Sequential([
 
 model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
 
-input = np.array([[4, 5]])
-output = model.predict(input)
-print(output)
+# input = np.array([[4, 5]])
+# output = model.predict(input)
+# print(output)
 
-tf.saved_model.save(model, '../saved_models/convex-poly_classif_nnet')
+# tf.saved_model.save(model, '../saved_models/convex-poly_classif_nnet')
+
+BOUND = 10
+X, Y = np.meshgrid(np.arange(-BOUND, BOUND+1), np.arange(-BOUND, BOUND+1))
+inputs = np.column_stack((X.ravel(), Y.ravel()))
+outputs = model.predict(inputs)
+
+plt.figure(1)
+plt.scatter(inputs[:, 0], inputs[:, 1], c=outputs, cmap='bwr')
+plt.title('y=x NN output')
+plt.xlabel('input_0')
+plt.ylabel('input_1')
+plt.colorbar(label='output')
+plt.grid(True)
+plt.show()

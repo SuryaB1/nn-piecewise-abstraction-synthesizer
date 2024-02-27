@@ -1,6 +1,9 @@
 import tensorflow as tf
 from tensorflow import keras
 import numpy as np
+import matplotlib.pyplot as plt
+
+# NOTE: this test case is y=x, such that on or to the left of the line is 0, otherwise 1
 
 model = tf.keras.Sequential([
     tf.keras.layers.Dense(units=1, activation='relu', input_shape=(2,), # calculate difference between components
@@ -18,8 +21,22 @@ model = tf.keras.Sequential([
 
 model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
 
-input = np.array([[0, 0]])
-output = model.predict(input)
-print(output)
+# input = np.array([[0, 0]]) # (x, y)
+# output = model.predict(input)
+# print(output)
 
 # tf.saved_model.save(model, '../saved_models/diagonal-split_classif_nnet')
+
+BOUND = 10
+X, Y = np.meshgrid(np.arange(-BOUND, BOUND+1), np.arange(-BOUND, BOUND+1))
+inputs = np.column_stack((X.ravel(), Y.ravel()))
+outputs = model.predict(inputs)
+
+plt.figure(1)
+plt.scatter(inputs[:, 0], inputs[:, 1], c=outputs, cmap='bwr')
+plt.title('y=x NN output')
+plt.xlabel('input_0')
+plt.ylabel('input_1')
+plt.colorbar(label='output')
+plt.grid(True)
+plt.show()
