@@ -28,7 +28,7 @@ SYNTHESIS_LOWER_BOUND = -100
 SYNTHESIS_UPPER_BOUND = 100
 # SYNTHESIS_ORIGIN = (0, 0) # TODO: allow for custom input space origin
 
-MIN_COUNTEREX_DISTANCE_TO_RIDGE = 0.5  # Minimum distance a counterexample can be from a segment boundary to be considered
+MIN_COUNTEREX_DISTANCE_TO_RIDGE = 1  # Minimum distance a counterexample can be from a segment boundary to be considered
 
 centroid_cell_map = dict() # Dictionary of format {centroid in input space : corresponding VoronoiCell object}
                             # global because Voronoi.compute_voronoi_tessellation() uses it to determine updated neighbor output values (could have returned incorrect outputs for main function to correct with local centroid_cell_dict, but not clean)
@@ -47,15 +47,15 @@ class Hyperplane:
     def __repr__(self):
         return f'Hyperplane(\'{self.coeffs}\', {self.constant}\', {self.type})'
 
-    # def distance_to_hyperplane(self, point):
-    #     unscaled_distance = np.dot(self.coeffs, point) + self.constant
-    #     return unscaled_distance / np.linalg.norm(self.coeffs)
+    def distance_to_hyperplane(self, point):
+        unscaled_distance = np.dot(self.coeffs, point) + self.constant
+        return unscaled_distance / np.linalg.norm(self.coeffs)
 
 class VoronoiCell:
     """A class that represents a Voronoi tessellation with instances representing individual cells."""
     
     vor = None  # Voronoi tessellation object
-    def __init__(self, centroid, ridges, output, neighbors):
+    def __init__(self, centroid = (), ridges = [], output = 0, neighbors = []):
         self.centroid = centroid # Tuple of coordinate component floats
         self.ridges = ridges  # List of Hyerplane objects
         self.output = output  # Int
@@ -67,8 +67,8 @@ class VoronoiCell:
     def __repr__(self):
         return f'VoronoiCell(\'{self.centroid}\', {self.ridges}\', {self.output}\', {self.neighbors})'
 
-    # def compute_dist_to_closest_ridge(self, point):
-    #     return min([ridge.distance_to_hyperplane(point) for ridge in self.ridges])
+    def compute_dist_to_farthest_ridge(self, point):
+        return max([ridge.distance_to_hyperplane(point) for ridge in self.ridges])
     
     @staticmethod
     def compute_voronoi_tessellation(input_output_dict, add_points=False):
@@ -273,7 +273,7 @@ def main():
     except _qhull.QhullError as e:  # Provide clear error message if datapoints are co-circular or co-spherical
         if "initial Delaunay input sites are cocircular or cospherical" in e:
             print("NOTE: This error message indicates that your datapoints are perfectly spaced out, which is incompatible with scipy.spatial.Voronoi incremental mode. Please add some slight noise to your datapoints.")
-        raise
+        raise e
 
     # Populate data structures
     for cell in new_cells:
@@ -292,23 +292,30 @@ def main():
     while incomplete_segments:
         curr_segment = incomplete_segments.pop()
         debug_log("Current segment:", curr_segment)
+        # if curr_segment == (9.999998305412163, 9.999998305412163):
+        #     break_val = centroid_cell_map[curr_segment]
+        #     print(break_val)
 
         # Query Marabou for counterexample within segment
         form_query(network, output_var, centroid_cell_map[curr_segment])
-        exitCode, vals, stats = network.solve(filename="marabou.log", verbose=False)
+        exitCode, vals, stats = network.solve(verbose=False)
 
         # Split current segment if counterexample exists (not doing this anymore since Marabou has its own min precision: and counterexample is not too close to segment boundary)
         if len(vals):
             counterex_centroid = tuple([float(vals[var]) for var in input_vars])  # Convert Marabou counterexample format to coordinate
-            # if centroid_cell_map[curr_segment].compute_dist_to_closest_ridge(counterex_centroid) > MIN_COUNTEREX_DISTANCE_TO_RIDGE:
+            # if centroid_cell_map[curr_segment].compute_dist_to_farthest_ridge(counterex_centroid) > MIN_COUNTEREX_DISTANCE_TO_RIDGE:
             debug_log("Splitting segment", curr_segment, "with counterexample", counterex_centroid)
+            incomplete_segments.append(curr_segment) # TODO: source of repetition here (should not occur since curr_segment and counterex represent different segments), then address ridge-less segment first or use to solve first clause
             incomplete_segments.append(counterex_centroid)
 
-            # Update Voronoi tessellation based on counterexample
+            # if counterex_centroid == (9.999998305412163, 9.999998305412163):
+            #     break_val = counterex_centroid
+            #     print(break_val)
+            
+            # Update Voronoi tessellation with counterexample
             updated_cells = VoronoiCell.compute_voronoi_tessellation( {counterex_centroid : int(vals[output_var])}, add_points=True )
             for cell in updated_cells:
                 centroid_cell_map[cell.centroid] = cell
-
 
     voronoi_plot_2d(VoronoiCell.vor)
     class_boundary_x = np.linspace(SYNTHESIS_LOWER_BOUND*1000, SYNTHESIS_UPPER_BOUND*1000, 100)
