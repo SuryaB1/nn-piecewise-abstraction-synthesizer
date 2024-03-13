@@ -24,11 +24,12 @@ TF_NN_FILENAME = "saved_models/diagonal-split_classif_nnet" # 2D input, non-rect
 DEBUG = True
 
 # Bounds on all axes of input space for which piecewise mapping is synthesized
-SYNTHESIS_LOWER_BOUND = -100
-SYNTHESIS_UPPER_BOUND = 100
+SYNTHESIS_LOWER_BOUND = -10
+SYNTHESIS_UPPER_BOUND = 10
 # SYNTHESIS_ORIGIN = (0, 0) # TODO: allow for custom input space origin
 
-MIN_COUNTEREX_DISTANCE_TO_RIDGE = 1  # Minimum distance a counterexample can be from a segment boundary to be considered
+MIN_COUNTEREX_DISTANCE_TO_RIDGE = 1  # Minimum distance a counterexample can be from a segment boundary to be considered (around 0.5 seems to be default from Marabou without using this param)
+MIN_COUNTEREX_DIST_TO_CENTR = 0.01 # min for lib: 0.0001
 
 centroid_cell_map = dict() # Dictionary of format {centroid in input space : corresponding VoronoiCell object}
                             # global because Voronoi.compute_voronoi_tessellation() uses it to determine updated neighbor output values (could have returned incorrect outputs for main function to correct with local centroid_cell_dict, but not clean)
@@ -201,22 +202,37 @@ def read_init_datapoints(filename="", input_dim=0):
 def form_query(network, output_var, curr_segment):
     network.clearProperty()
 
+    omit_close_counterex_disjunction = []  # Inequalities to prevent counterexamples to close to curr_segment's centroid
+
     # Add inequalities for synthesis input space bounds to query
     for var in network.inputVars[0][0]:
         network.setLowerBound(var, SYNTHESIS_LOWER_BOUND)
         network.setUpperBound(var, SYNTHESIS_UPPER_BOUND)
+
+        # Add inequalities to prevent counter-example from being too close current segment's centroid
+        eq1 = MarabouUtils.Equation(MarabouCore.Equation.LE)
+        eq1.addAddend(1.0, var)
+        eq1.setScalar(curr_segment.centroid[var] - MIN_COUNTEREX_DIST_TO_CENTR)
+
+        eq2 = MarabouUtils.Equation(MarabouCore.Equation.GE)
+        eq2.addAddend(1.0, var)
+        eq2.setScalar(curr_segment.centroid[var] + MIN_COUNTEREX_DIST_TO_CENTR)
+
+        omit_close_counterex_disjunction.extend([[eq1], [eq2]])
+
+    network.addDisjunctionConstraint(omit_close_counterex_disjunction)
 
     # Add inequalities for current segment's ridges
     for ridge in curr_segment.ridges:
         eq = MarabouUtils.Equation(ridge.type)
 
         input_vars = network.inputVars[0][0]
-        for var in input_vars: # for var_idx in range(0, input_vars): var = input_vars[var_idx] eq.addAddend(ridge.coeffs[var_idx], var)
+        for var in input_vars:
             eq.addAddend(ridge.coeffs[var], var)
         eq.setScalar(ridge.constant)
 
-        network.addEquation(eq, isProperty=True)
-
+        network.addEquation(eq, isProperty=True)  # Need to isProperty set to true to be able to clear it with network.clearProperty()
+    
     # Add equality expressing class assignment for current segment
     eq = MarabouUtils.Equation()
     eq.addAddend(1, output_var)
@@ -289,28 +305,22 @@ def main():
     plt.plot(class_boundary_x, class_boundary_y)
 
     # CEGIS loop
-    while incomplete_segments:
+    while incomplete_segments: # TODO: set to just see front instead of pop to be more efficient
         curr_segment = incomplete_segments.pop()
         debug_log("Current segment:", curr_segment)
-        # if curr_segment == (9.999998305412163, 9.999998305412163):
-        #     break_val = centroid_cell_map[curr_segment]
-        #     print(break_val)
 
         # Query Marabou for counterexample within segment
         form_query(network, output_var, centroid_cell_map[curr_segment])
-        exitCode, vals, stats = network.solve(verbose=False)
+        options = Marabou.createOptions(verbosity = 0)
+        exitCode, vals, stats = network.solve(options = options, verbose=False)
 
         # Split current segment if counterexample exists (not doing this anymore since Marabou has its own min precision: and counterexample is not too close to segment boundary)
         if len(vals):
             counterex_centroid = tuple([float(vals[var]) for var in input_vars])  # Convert Marabou counterexample format to coordinate
             # if centroid_cell_map[curr_segment].compute_dist_to_farthest_ridge(counterex_centroid) > MIN_COUNTEREX_DISTANCE_TO_RIDGE:
             debug_log("Splitting segment", curr_segment, "with counterexample", counterex_centroid)
-            incomplete_segments.append(curr_segment) # TODO: source of repetition here (should not occur since curr_segment and counterex represent different segments), then address ridge-less segment first or use to solve first clause
+            incomplete_segments.append(curr_segment)
             incomplete_segments.append(counterex_centroid)
-
-            # if counterex_centroid == (9.999998305412163, 9.999998305412163):
-            #     break_val = counterex_centroid
-            #     print(break_val)
             
             # Update Voronoi tessellation with counterexample
             updated_cells = VoronoiCell.compute_voronoi_tessellation( {counterex_centroid : int(vals[output_var])}, add_points=True )
