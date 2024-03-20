@@ -1,18 +1,21 @@
 import sys
+import os
+import glob
 import random
 import ast
 import itertools
+import imageio
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import Voronoi, voronoi_plot_2d, _qhull
-from dataclasses import dataclass
+from voronoi_plot_2d_custom import voronoi_plot_2d_colored
+from voronoi_cegis_utils import *
 
 from maraboupy import Marabou
 from maraboupy import MarabouCore
 # from maraboupy import MarabouNetwork
 from maraboupy import MarabouUtils
-# TODO: look into how Voronoi is generating the ridges ince they don't seem perpendicular; hceck Marabou check implementaiton
-# TODO: look into outer counter-examples step throuhg, clever way for merging
+
 # Test cases
 # TF_NN_FILENAME = "saved_models/sign_classif_nn_no-softmax" # 1D input
 # TF_NN_FILENAME = "saved_models/unit-sqr_classif_nnet_no-sigmoid" # 2D input
@@ -22,6 +25,7 @@ TF_NN_FILENAME = "saved_models/diagonal-split_classif_nnet" # 2D input, non-rect
 # TF_NN_FILENAME = "saved_models/4d-unit-sqr_classif_nnet_no-sigmoid" # 4D input
 
 DEBUG = True
+OUTPUT_TESSELLATION_FORMATION_GIF = False
 
 # Bounds on all axes of input space for which piecewise mapping is synthesized
 SYNTHESIS_LOWER_BOUND = -10
@@ -31,145 +35,10 @@ SYNTHESIS_UPPER_BOUND = 10
 MIN_COUNTEREX_DISTANCE_TO_RIDGE = 1  # Minimum distance a counterexample can be from a segment boundary to be considered (around 0.5 seems to be default from Marabou without using this param)
 MIN_COUNTEREX_DIST_TO_CENTR = 0.01 # min for lib: 0.0001
 
-centroid_cell_map = dict() # Dictionary of format {centroid in input space : corresponding VoronoiCell object}
-                            # global because Voronoi.compute_voronoi_tessellation() uses it to determine updated neighbor output values (could have returned incorrect outputs for main function to correct with local centroid_cell_dict, but not clean)
-
-@dataclass
-class Hyperplane:
-    """A class that represents a hyperplane as a Cartesian equation."""
-
-    coeffs: np.ndarray
-    constant: float
-    type: MarabouCore.Equation.EquationType
-
-    def __str__(self):
-        return f''
-
-    def __repr__(self):
-        return f'Hyperplane(\'{self.coeffs}\', {self.constant}\', {self.type})'
-
-    def distance_to_hyperplane(self, point):
-        unscaled_distance = np.dot(self.coeffs, point) + self.constant
-        return unscaled_distance / np.linalg.norm(self.coeffs)
-
-class VoronoiCell:
-    """A class that represents a Voronoi tessellation with instances representing individual cells."""
-    
-    vor = None  # Voronoi tessellation object
-    def __init__(self, centroid = (), ridges = [], output = 0, neighbors = []):
-        self.centroid = centroid # Tuple of coordinate component floats
-        self.ridges = ridges  # List of Hyerplane objects
-        self.output = output  # Int
-        self.neighbors = neighbors  # List of centroid indices
-
-    def __str__(self):
-        return f''
-
-    def __repr__(self):
-        return f'VoronoiCell(\'{self.centroid}\', {self.ridges}\', {self.output}\', {self.neighbors})'
-
-    def compute_dist_to_farthest_ridge(self, point):
-        return max([ridge.distance_to_hyperplane(point) for ridge in self.ridges])
-    
-    @staticmethod
-    def compute_voronoi_tessellation(input_output_dict, add_points=False):
-        # Obtain updated Voronoi tessellation object
-        new_centroids = list(input_output_dict.keys())
-        first_new_centroid_idx = 0
-        if add_points:
-            first_new_centroid_idx = len(VoronoiCell.vor.points)
-            VoronoiCell.vor.add_points(new_centroids)
-        else:
-            VoronoiCell.vor = Voronoi(new_centroids, incremental=True)
-
-        # Construct new cells from generated centroids and Voronoi tessellation
-        new_cells = []
-        new_cells_centr_idxs = set()
-        # print(f"{first_new_centroid_idx}, {len(new_centroids)}")
-        for i in range(first_new_centroid_idx, len(VoronoiCell.vor.points)):
-            centr = tuple(VoronoiCell.vor.points[i])
-            print(f"centr: {centr}")
-            ridges, neighbors = VoronoiCell.get_ridges_and_neighbors_for_region(centr, i, VoronoiCell.vor.ridge_dict, VoronoiCell.vor.vertices)
-            new_cells.append(VoronoiCell(centr, ridges, input_output_dict[centr], neighbors))
-            new_cells_centr_idxs.add(i)
-
-        # Update new cells' neighbors (if the neighbor is not one of the new cells)
-        if add_points:
-            for c in range(len(new_cells)):
-                for n in new_cells[c].neighbors:
-                    if not n in new_cells_centr_idxs:
-                        centr = tuple(VoronoiCell.vor.points[n])
-                        ridges, neighbors = VoronoiCell.get_ridges_and_neighbors_for_region(centr, n, VoronoiCell.vor.ridge_dict, VoronoiCell.vor.vertices)
-                        new_cells.append(VoronoiCell(centr, ridges, centroid_cell_map[centr].output, neighbors))
-
-        return new_cells
-    
-    @staticmethod
-    def get_ridges_and_neighbors_for_region(centroid, region_idx, ridge_dict, vertices):
-        """Given a region and all of its ridges, this function will return the ridges of this region as Hyperplane objects and neighbors of this region"""
-        neighbors = []
-        ridges = []
-
-        # Centroid distribution characteristics
-        center = VoronoiCell.vor.points.mean(axis=0)
-        ptp_bound = VoronoiCell.vor.points.ptp(axis=0)
-
-        # Loop through each region index pair (formatted as (region index, adjacent region index)) and the ridge in between
-        for adj_region_pair, ridge in ridge_dict.items():
-            # NOTE: below code will only work for 2D case (based on scipy.spatial.Voronoi.voronoi_plot_2d(), and ne)
-            ridge = np.array(ridge)
-
-            if region_idx in adj_region_pair:
-                region_pair_idx = adj_region_pair.index(region_idx)
-
-                # If region_idx is part of this pair of regions (equivalent to centroids and segments), extract ridge and neighbor data
-                ridge_hyperplane_vertices = vertices[ridge]
-
-                # Approximate every infinite vertex of the common ridge of this adjacent region apir
-                for vert_idx in np.where(ridge == -1):  # Single iteration in 2D case
-                    finite_end_ridge_vertex = ridge[ridge >= 0][0]  # Finite end of line segment ridge in 2D case
-
-                    tangent = VoronoiCell.vor.points[adj_region_pair[1]] - VoronoiCell.vor.points[adj_region_pair[0]]  # Tangent of adjacent centroids
-                    tangent /= np.linalg.norm(tangent)
-                    normal = np.array([-tangent[1], tangent[0]])  # Normal vector to the tangent line
-
-                    midpoint = VoronoiCell.vor.points[list(adj_region_pair)].mean(axis=0)
-                    direction = np.sign(np.dot(midpoint - center, normal)) * normal
-                    far_point = VoronoiCell.vor.vertices[finite_end_ridge_vertex] + direction * ptp_bound.max()  # Approximation of the infinite vertex
-
-                    ridge_hyperplane_vertices[vert_idx] = far_point  # Save the approximation into the index of the infinite vertex in the corresponding ridge's vertices
-                    
-                ridges.append( VoronoiCell.get_hyperplane(centroid, ridge_hyperplane_vertices) )
-                neighbors.append(adj_region_pair[ int(not region_pair_idx) ])
-
-        return ridges, neighbors
-
-    @staticmethod
-    def get_hyperplane(centroid, hyperplane_vertices): # Given a ridge, return it as a hyperplane by solving Ax=b (where x is the coefficients) using least squares
-        # Arbitrary-dimension case
-        # A = np.array(vertices[ridge]) # Array of vertices
-        # b = np.ones(A.shape[0])
-        # coefficients = np.linalg.pinv(A) @ b # TODO: compare with np.linalg.lstsq for computing hyperplane from vertices
-        # constant = 1
-        
-        # 2D case
-        y_delta = hyperplane_vertices[1][1] - hyperplane_vertices[0][1]
-        x_delta = hyperplane_vertices[1][0] - hyperplane_vertices[0][0]
-        assert not (x_delta == 0 and y_delta == 0)
-
-        x_coeff = y_delta / x_delta if x_delta != 0 else -1.0
-        y_coeff = float(x_delta != 0)
-        coeffs = np.asarray([-1*x_coeff, y_coeff])
-
-        constant = np.dot(coeffs, hyperplane_vertices[0])
-        
-        assert np.dot(coeffs, centroid) != constant  # Centroid should not lie on VoronoiCell ridge; if it does, its an implementation issue
-        if np.dot(coeffs, centroid) < constant: 
-            inequality_type = MarabouCore.Equation.LE
-        elif np.dot(coeffs, centroid) > constant:
-            inequality_type = MarabouCore.Equation.GE
-    
-        return Hyperplane(coeffs, constant, inequality_type)
+def clear_directory(directory="tess_form_gif"):
+    files = glob.glob(os.path.join(directory, '*'))
+    for f in files:
+        os.remove(f)
 
 def debug_log(*str):
     if DEBUG:
@@ -264,6 +133,7 @@ def main():
         sys.exit(f"ERROR: At least {min_num_init_datapoints} input datapoints are needed, but only {len(init_datapoints)} were given.")
     
     # Initialize data structures for keeping track of segments
+    centroid_cell_map = dict() # Dictionary of format {centroid in input space : corresponding VoronoiCell object}
     incomplete_segments = [] # Stack of centroids representing unsearched segments
     
     # If no initial datapoints are provided, generate initial datapoints in input space
@@ -299,10 +169,18 @@ def main():
     debug_log("Populated data structures. Beginning CEGIS loop...")
 
     plt.rcParams["figure.figsize"] = (7, 7)
-    voronoi_plot_2d(VoronoiCell.vor)
+    voronoi_plot_2d_colored(VoronoiCell.vor, centroid_cell_map=centroid_cell_map)
     class_boundary_x = np.linspace(SYNTHESIS_LOWER_BOUND*1000, SYNTHESIS_UPPER_BOUND*1000, 100)
     class_boundary_y = class_boundary_x
-    plt.plot(class_boundary_x, class_boundary_y)
+    plt.plot(class_boundary_x, class_boundary_y, color='g')
+
+    if OUTPUT_TESSELLATION_FORMATION_GIF:
+        tess_form_gif_fnames = []
+        clear_directory()
+        cegis_iteration = 0
+        output_plot_filename = f'tess_form_gif/cegis_iteration_{cegis_iteration}.png'
+        tess_form_gif_fnames.append(output_plot_filename)
+        plt.savefig(output_plot_filename)
 
     # CEGIS loop
     while incomplete_segments: # TODO: set to just see front instead of pop to be more efficient
@@ -323,15 +201,31 @@ def main():
             incomplete_segments.append(counterex_centroid)
             
             # Update Voronoi tessellation with counterexample
-            updated_cells = VoronoiCell.compute_voronoi_tessellation( {counterex_centroid : int(vals[output_var])}, add_points=True )
+            updated_cells = VoronoiCell.compute_voronoi_tessellation({counterex_centroid : int(vals[output_var])}, add_points=True, centroid_cell_map=centroid_cell_map)
             for cell in updated_cells:
                 centroid_cell_map[cell.centroid] = cell
 
-    voronoi_plot_2d(VoronoiCell.vor)
-    class_boundary_x = np.linspace(SYNTHESIS_LOWER_BOUND*1000, SYNTHESIS_UPPER_BOUND*1000, 100)
+            if OUTPUT_TESSELLATION_FORMATION_GIF:
+                voronoi_plot_2d_colored(VoronoiCell.vor, centroid_cell_map=centroid_cell_map)
+                class_boundary_x = np.linspace(SYNTHESIS_LOWER_BOUND*1000, SYNTHESIS_UPPER_BOUND*1000, 10)
+                class_boundary_y = class_boundary_x
+                plt.plot(class_boundary_x, class_boundary_y, color='g')
+
+                cegis_iteration += 1
+                output_plot_filename = f'tess_form_gif/cegis_iteration_{cegis_iteration}.png'
+                tess_form_gif_fnames.append(output_plot_filename)
+                plt.savefig(output_plot_filename)
+
+    voronoi_plot_2d_colored(VoronoiCell.vor, centroid_cell_map=centroid_cell_map)
+    class_boundary_x = np.linspace(SYNTHESIS_LOWER_BOUND*1000, SYNTHESIS_UPPER_BOUND*1000, 10)
     class_boundary_y = class_boundary_x
-    plt.plot(class_boundary_x, class_boundary_y)
-    plt.show()
+    plt.plot(class_boundary_x, class_boundary_y, color='g')
+
+    if OUTPUT_TESSELLATION_FORMATION_GIF:
+        image_np_arrays = [imageio.imread(fname) for fname in tess_form_gif_fnames]
+        imageio.mimsave('tess_form_gif/tessellation_formation.gif', image_np_arrays)
+    else:
+        plt.show()
 
 if __name__ == '__main__':
     main()
