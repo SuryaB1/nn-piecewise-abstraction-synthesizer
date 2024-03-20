@@ -13,7 +13,13 @@ class Hyperplane:
     type: MarabouCore.Equation.EquationType
 
     def __str__(self):
-        return f''
+        to_return = f"{self.coeffs[0]}*x0"
+        for i in range(1, self.coeffs.size):
+            to_return += f" + {self.coeffs[i]}*x{i}"
+
+        to_return += " <= " if self.type == MarabouCore.Equation.LE else " >= "
+        to_return += f"{self.constant}"
+        return to_return
 
     def __repr__(self):
         return f'Hyperplane(\'{self.coeffs}\', {self.constant}\', {self.type})'

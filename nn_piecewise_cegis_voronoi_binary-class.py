@@ -28,8 +28,8 @@ DEBUG = True
 OUTPUT_TESSELLATION_FORMATION_GIF = False
 
 # Bounds on all axes of input space for which piecewise mapping is synthesized
-SYNTHESIS_LOWER_BOUND = -10
-SYNTHESIS_UPPER_BOUND = 10
+SYNTHESIS_LOWER_BOUND = -100
+SYNTHESIS_UPPER_BOUND = 100
 # SYNTHESIS_ORIGIN = (0, 0) # TODO: allow for custom input space origin
 
 MIN_COUNTEREX_DISTANCE_TO_RIDGE = 1  # Minimum distance a counterexample can be from a segment boundary to be considered (around 0.5 seems to be default from Marabou without using this param)
@@ -69,10 +69,12 @@ def read_init_datapoints(filename="", input_dim=0):
     return input_output_dict
 
 def form_query(network, output_var, curr_segment):
+    debug_log("PRINTING QUERY...")
     network.clearProperty()
 
     omit_close_counterex_disjunction = []  # Inequalities to prevent counterexamples to close to curr_segment's centroid
 
+    print("Disjunctions:")
     # Add inequalities for synthesis input space bounds to query
     for var in network.inputVars[0][0]:
         network.setLowerBound(var, SYNTHESIS_LOWER_BOUND)
@@ -82,17 +84,21 @@ def form_query(network, output_var, curr_segment):
         eq1 = MarabouUtils.Equation(MarabouCore.Equation.LE)
         eq1.addAddend(1.0, var)
         eq1.setScalar(curr_segment.centroid[var] - MIN_COUNTEREX_DIST_TO_CENTR)
+        print(f"x{var} <= {curr_segment.centroid[var] - MIN_COUNTEREX_DIST_TO_CENTR}")
 
         eq2 = MarabouUtils.Equation(MarabouCore.Equation.GE)
         eq2.addAddend(1.0, var)
         eq2.setScalar(curr_segment.centroid[var] + MIN_COUNTEREX_DIST_TO_CENTR)
+        print(f"x{var} >= {curr_segment.centroid[var] + MIN_COUNTEREX_DIST_TO_CENTR}")
 
         omit_close_counterex_disjunction.extend([[eq1], [eq2]])
 
     network.addDisjunctionConstraint(omit_close_counterex_disjunction)
 
+    print("Inequalities:")
     # Add inequalities for current segment's ridges
     for ridge in curr_segment.ridges:
+        print(ridge)
         eq = MarabouUtils.Equation(ridge.type)
 
         input_vars = network.inputVars[0][0]
@@ -107,6 +113,7 @@ def form_query(network, output_var, curr_segment):
     eq.addAddend(1, output_var)
     eq.setScalar(int(not curr_segment.output)) # TODO: works only for binary classification case, need to change to LE constant - 1, and GE constant + 1 for multiple classes
     network.addEquation(eq, isProperty=True)
+    print(f"output_var=={int(not curr_segment.output)}")
 
 def main():
     # NOTE #1: Run program with Python version X.Y where X and Y are defined in MarabouCore.cpython-XY-darwin.so 
@@ -175,6 +182,10 @@ def main():
     plt.plot(class_boundary_x, class_boundary_y, color='g')
 
     if OUTPUT_TESSELLATION_FORMATION_GIF:
+        dirname = "tess_form_gif"
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+
         tess_form_gif_fnames = []
         clear_directory()
         cegis_iteration = 0
@@ -188,9 +199,12 @@ def main():
         debug_log("Current segment:", curr_segment)
 
         # Query Marabou for counterexample within segment
+        debug_log("FORMING QUERY")
         form_query(network, output_var, centroid_cell_map[curr_segment])
         options = Marabou.createOptions(verbosity = 0)
+        debug_log("QUERYING")
         exitCode, vals, stats = network.solve(options = options, verbose=False)
+        debug_log("QUERIED")
 
         # Split current segment if counterexample exists (not doing this anymore since Marabou has its own min precision: and counterexample is not too close to segment boundary)
         if len(vals):
