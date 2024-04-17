@@ -26,11 +26,11 @@ TF_NN_FILENAME = "saved_models/diagonal-split_classif_nnet" # 2D input, non-rect
 
 DEBUG = True
 OUTPUT_TESSELLATION_FORMATION_GIF = False
+STARTING_POINTS_PROVIDED = True
 
 # Bounds on all axes of input space for which piecewise mapping is synthesized
 SYNTHESIS_LOWER_BOUND = -100
 SYNTHESIS_UPPER_BOUND = 100
-# SYNTHESIS_ORIGIN = (0, 0) # TODO: allow for custom input space origin
 
 MIN_COUNTEREX_DISTANCE_TO_RIDGE = 1  # Minimum distance a counterexample can be from a segment boundary to be considered (around 0.5 seems to be default from Marabou without using this param)
 MIN_COUNTEREX_DIST_TO_CENTR = 0.01 # min for lib: 0.0001
@@ -42,7 +42,8 @@ def clear_directory(directory="tess_form_gif"):
 
 def debug_log(*str):
     if DEBUG:
-        print("DEBUG:", *str)
+        print("[DEBUG]", *str)
+        pass
 
 # Assumes input data is flattened to single dimensional Python list, and output class is integer
 def read_init_datapoints(filename="", input_dim=0):
@@ -90,8 +91,9 @@ def form_query(network, output_var, curr_segment):
         eq2.addAddend(1.0, var)
         eq2.setScalar(curr_segment.centroid[var] + MIN_COUNTEREX_DIST_TO_CENTR)
         print(f"x{var} >= {curr_segment.centroid[var] + MIN_COUNTEREX_DIST_TO_CENTR}")
-
+        
         omit_close_counterex_disjunction.extend([[eq1], [eq2]])
+        # network.addDisjunctionConstraint([[eq1], [eq2]])  # Move adding disjunction constraint up here from two lines below for [-100,100] case workaround for non-terminating query
 
     network.addDisjunctionConstraint(omit_close_counterex_disjunction)
 
@@ -128,38 +130,34 @@ def main():
     output_vars = network.outputVars[0].flatten()
     assert len(output_vars) == 1  # Ensure that network has a single output
     output_var = output_vars[0]
-    # SYNTHESIS_ORIGIN = tuple([0 for i in range(len(input_vars))])
     
     debug_log("Read input neural network. Parsing input datapoints...")
 
     # Parse datapoints provided for initialization of Voronoi tessellation
-    init_datapoints = read_init_datapoints("sample_data/diagonal-split-sample-data.txt", len(input_vars))  # diagonal-split-sample-data
-    num_init_datapoints = len(init_datapoints)
+    init_datapoints = dict()
     min_num_init_datapoints = 4 + (len(input_vars) - 2)  # Minimum number of datapoints needed to compute Voronoi tessellation by scipy.spatial.Voronoi 
-    if num_init_datapoints > 0 and num_init_datapoints < min_num_init_datapoints:
-        sys.exit(f"ERROR: At least {min_num_init_datapoints} input datapoints are needed, but only {len(init_datapoints)} were given.")
-    
-    # Initialize data structures for keeping track of segments
-    centroid_cell_map = dict() # Dictionary of format {centroid in input space : corresponding VoronoiCell object}
-    incomplete_segments = [] # Stack of centroids representing unsearched segments
-    
-    # If no initial datapoints are provided, generate initial datapoints in input space
-    if not init_datapoints:
-        # Select centroids representing initial datapoints in input space (currently, relative to origin - see line 26 TODO)
-        init_centroids = itertools.product( *[ [-0.5*SYNTHESIS_LOWER_BOUND, 0.5*SYNTHESIS_UPPER_BOUND] for i in range(len(input_vars)) ] )
-        
-        # Convert centroid to datapoint (since scipy.spatial.Voronoi is not compatible with points being co-circular/co-spherical)
-        for coord in init_centroids:
-            # Add noise to centroid
-            random_idx_for_noise = random.randint(0, len(input_vars) - 1)  # Select a dimension of the centroid to receive noise
-            random_noise_offset = random.uniform(-1, 1)  # Compute noise to apply to centroid
-            coord[random_idx_for_noise] += random_noise_offset
+    if (STARTING_POINTS_PROVIDED):
+        sample_data_filename = "diagonal-split-sample-data.txt" # "diagonal-split_sample-data_structured.txt" # "diagonal-split-sample-data.txt"
+        init_datapoints = read_init_datapoints(f"sample_data/{sample_data_filename}", len(input_vars))  # diagonal-split-sample-data
+        num_init_datapoints = len(init_datapoints)
+        if num_init_datapoints > 0 and num_init_datapoints < min_num_init_datapoints:
+            sys.exit(f"ERROR: At least {min_num_init_datapoints} input datapoints are needed, but only {len(init_datapoints)} were given.")
+    else:  # If no initial datapoints are provided, sample initial datapoints in input space
+        for i in range(min_num_init_datapoints):  # min_num_init_datapoints 100
+            init_centroid = tuple([ round(random.uniform(SYNTHESIS_LOWER_BOUND, SYNTHESIS_UPPER_BOUND), 2) for d in range( len(input_vars) ) ])
+            while init_centroid in init_datapoints:  # Re-generate sample until unique sample found
+                init_centroid = tuple([ round(random.uniform(SYNTHESIS_LOWER_BOUND, SYNTHESIS_UPPER_BOUND), 2) for d in range( len(input_vars) ) ])
+
+            # Add noise to centroid (since scipy.spatial.Voronoi is not compatible with points being co-circular/co-spherical)
+            # random_idx_for_noise = random.randint(0, len(input_vars) - 1)  # Select a dimension of the centroid to receive noise
+            # random_noise_offset = random.uniform(-1, 1)  # Compute noise to apply to centroid
+            # coord[random_idx_for_noise] += random_noise_offset
 
             # Compute output value of centroid
-            network.clearProperty()
-            init_output = network.evaluateWithMarabou(coord)
-            init_datapoints[tuple(coord)] = init_output
-
+            network.clearProperty()  # Not sure if needed for evaluateWithMarabou (TODO: verify)
+            init_output = int(network.evaluateWithMarabou(init_centroid)[0][0]) # Non-terminating with init_output = network.evaluateWithMarabou(init_centroid) # array([[0.]]) or array([[1.]])
+            init_datapoints[init_centroid] = init_output
+    print(init_datapoints)
     # Compute initial Voronoi Tessellation with initial datapoints
     try:
         new_cells = VoronoiCell.compute_voronoi_tessellation(init_datapoints)
@@ -167,6 +165,10 @@ def main():
         if "initial Delaunay input sites are cocircular or cospherical" in e:
             print("NOTE: This error message indicates that your datapoints are perfectly spaced out, which is incompatible with scipy.spatial.Voronoi incremental mode. Please add some slight noise to your datapoints.")
         raise e
+    
+    # Initialize data structures for keeping track of segments
+    centroid_cell_map = dict() # Dictionary of format {centroid in input space : corresponding VoronoiCell object}
+    incomplete_segments = [] # Stack of centroids representing unsearched segments
 
     # Populate data structures
     for cell in new_cells:
@@ -177,7 +179,7 @@ def main():
 
     plt.rcParams["figure.figsize"] = (7, 7)
     voronoi_plot_2d_colored(VoronoiCell.vor, centroid_cell_map=centroid_cell_map)
-    class_boundary_x = np.linspace(SYNTHESIS_LOWER_BOUND*1000, SYNTHESIS_UPPER_BOUND*1000, 100)
+    class_boundary_x = np.linspace(SYNTHESIS_LOWER_BOUND*100, SYNTHESIS_UPPER_BOUND*100, 100)
     class_boundary_y = class_boundary_x
     plt.plot(class_boundary_x, class_boundary_y, color='g')
 
@@ -198,12 +200,18 @@ def main():
         curr_segment = incomplete_segments.pop()
         debug_log("Current segment:", curr_segment)
 
-        # Query Marabou for counterexample within segment
-        debug_log("FORMING QUERY")
-        form_query(network, output_var, centroid_cell_map[curr_segment])
-        options = Marabou.createOptions(verbosity = 0)
-        debug_log("QUERYING")
-        exitCode, vals, stats = network.solve(options = options, verbose=False)
+        # Query Marabou for counterexample within segment (once query times out, attempt query again to get lucky with random branching order)
+        exitCode = "TIMEOUT"
+        query_timeout = 2  # seconds
+        while exitCode[0] == "T":  # TODO: put while loop just around network.solve() call
+            if query_timeout > 2:
+                debug_log(f"QUERY TIMED OUT. Requerying with timeut of {query_timeout} seconds...")
+            debug_log("FORMING QUERY")
+            form_query(network, output_var, centroid_cell_map[curr_segment])
+            options = Marabou.createOptions(verbosity = 0, timeoutInSeconds=query_timeout)
+            debug_log("QUERYING")
+            exitCode, vals, stats = network.solve(options = options, verbose=False)
+            query_timeout *= 2
         debug_log("QUERIED")
 
         # Split current segment if counterexample exists (not doing this anymore since Marabou has its own min precision: and counterexample is not too close to segment boundary)
@@ -230,8 +238,10 @@ def main():
                 tess_form_gif_fnames.append(output_plot_filename)
                 plt.savefig(output_plot_filename)
 
+    # boundary_ridges = VoronoiCell.extract_class_boundary()
+
     voronoi_plot_2d_colored(VoronoiCell.vor, centroid_cell_map=centroid_cell_map)
-    class_boundary_x = np.linspace(SYNTHESIS_LOWER_BOUND*1000, SYNTHESIS_UPPER_BOUND*1000, 10)
+    class_boundary_x = np.linspace(SYNTHESIS_LOWER_BOUND*100, SYNTHESIS_UPPER_BOUND*100, 10)
     class_boundary_y = class_boundary_x
     plt.plot(class_boundary_x, class_boundary_y, color='g')
 

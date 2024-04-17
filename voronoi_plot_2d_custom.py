@@ -104,17 +104,18 @@ def voronoi_plot_2d_colored(vor, ax=None, **kw):
 
     if kw.get('show_points', True):
         centr_colors = ['b', 'r', 'm', 'g', 'c', 'y', 'k']  # Supports coloring up to 7 classes
-
+        
         for point in vor.points:
             output_val = kw['centroid_cell_map'][tuple(point)].output
+            col = 'c'
             try:
-                color = centr_colors[output_val]
+                col = centr_colors[output_val]
             except Exception as e:
                 print(e)
                 print("This error indicates that there are more output classes than possible colors, or the output value is incorrect.")
             
             point_size = kw.get('point_size', None)
-            ax.plot(point[0], point[1], '.', color=color, markersize=point_size)
+            ax.plot(point[0], point[1], '.', color=col, markersize=point_size)
 
         # point_size = kw.get('point_size', None)
         # ax.plot(vor.points[:, 0], vor.points[:, 1], '.', markersize=point_size)

@@ -121,7 +121,7 @@ class VoronoiCell:
         return ridges, neighbors
 
     @staticmethod
-    def get_hyperplane(centroid, hyperplane_vertices): # Given a ridge, return it as a hyperplane by solving Ax=b (where x is the coefficients) using least squares
+    def get_hyperplane(centroid, hyperplane_vertices, epsilon=0.001): # Given a ridge, return it as a hyperplane by solving Ax=b (where x is the coefficients) using least squares
         # Arbitrary-dimension case
         # A = np.array(vertices[ridge]) # Array of vertices
         # b = np.ones(A.shape[0])
@@ -139,10 +139,30 @@ class VoronoiCell:
 
         constant = np.dot(coeffs, hyperplane_vertices[0])
         
+        # TODO: correct constant adjustments (need to make entire hyperplane move in epsilon magnitude towards centroid)
         assert np.dot(coeffs, centroid) != constant  # Centroid should not lie on VoronoiCell ridge; if it does, its an implementation issue
         if np.dot(coeffs, centroid) < constant: 
             inequality_type = MarabouCore.Equation.LE
+            constant -= epsilon * np.linalg.norm(coeffs) # TODO, always slightly over epsilon
         elif np.dot(coeffs, centroid) > constant:
             inequality_type = MarabouCore.Equation.GE
+            # constant += epsilon
+            constant += epsilon * np.linalg.norm(coeffs)
     
         return Hyperplane(coeffs, constant, inequality_type)
+    
+    @staticmethod
+    def extract_class_boundary(centroid_cell_dict):
+        SLOPE_DEVIATION_THRESHOLD = 0.1  # Maximum deviation in slope contributed by a new vertex before new ridge is created
+
+        boundary_ridges = []
+        # TODO: eliminate unnecessary zig-zagging of ridges in 2D case
+
+        curr_slope = 0.0
+        for centr, cell in centroid_cell_dict.items():
+            for neighbor in cell.neighbors:
+                # find the neighbor that extends along the class boundary
+                # if such neighbors exist, add to one linked list (single-link state like markov model is opposite class segment)
+                # linked list per class
+                pass
+        return boundary_ridges
