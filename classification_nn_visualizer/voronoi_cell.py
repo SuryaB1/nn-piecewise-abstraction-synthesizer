@@ -1,3 +1,0 @@
-# Hyperplane class
-
-# VoronoiCell class

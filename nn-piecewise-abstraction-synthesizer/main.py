@@ -3,13 +3,12 @@ import os
 import glob
 import random
 import ast
-import itertools
 import imageio
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.spatial import Voronoi, voronoi_plot_2d, _qhull
-from voronoi_plot_2d_custom import voronoi_plot_2d_colored
-from voronoi_cegis_utils import *
+from utils.voronoi_plot_2d import voronoi_plot_2d_colored
+from utils.voronoi_cell import *
 
 from maraboupy import Marabou
 from maraboupy import MarabouCore

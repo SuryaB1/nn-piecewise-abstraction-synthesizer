@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.spatial import Voronoi, voronoi_plot_2d, _qhull
+from scipy.spatial import Voronoi
 from dataclasses import dataclass
 from maraboupy import MarabouCore
 
