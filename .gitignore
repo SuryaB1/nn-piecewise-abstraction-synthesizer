@@ -9,9 +9,6 @@ venv3/
 .venv/
 .pytest_cache
 
-# Virtual Machines
-.vagrant/
-
 # Text editors and IDEs
 *~
 *.lock

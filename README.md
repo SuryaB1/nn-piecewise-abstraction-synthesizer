@@ -2,6 +2,8 @@
 
 The goal of this project is to synthesize an abstraction of a neural network. (description in progress)
 
+## File Organization
+
 ## Usage
 
 ```bash
@@ -11,5 +13,7 @@ $ nn-piecewise-abstraction-synthesizer
 ```
 
 ## Development
+
+See the status of the project in `docs/TODO.md`.
 
 Read the [CONTRIBUTING.md](CONTRIBUTING.md) file.
