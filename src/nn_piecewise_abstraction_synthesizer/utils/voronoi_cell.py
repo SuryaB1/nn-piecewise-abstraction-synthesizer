@@ -82,7 +82,7 @@ class VoronoiCell:
     
     @staticmethod
     def get_ridges_and_neighbors_for_region(centroid, region_idx, ridge_dict, vertices):
-        """Given a region and all of its ridges, this function will return the ridges of this region as Hyperplane objects and neighbors of this region"""
+        """Return the ridges of the given region as Hyperplane objects and neighbors of the region."""
         neighbors = []
         ridges = []
 
@@ -92,7 +92,6 @@ class VoronoiCell:
 
         # Loop through each region index pair (formatted as (region index, adjacent region index)) and the ridge in between
         for adj_region_pair, ridge in ridge_dict.items():
-            # NOTE: below code will only work for 2D case (based on scipy.spatial.Voronoi.voronoi_plot_2d(), and ne)
             ridge = np.array(ridge)
 
             if region_idx in adj_region_pair:
@@ -100,6 +99,8 @@ class VoronoiCell:
 
                 # If region_idx is part of this pair of regions (equivalent to centroids and segments), extract ridge and neighbor data
                 ridge_hyperplane_vertices = vertices[ridge]
+
+                # TODO: Scale implementation (below for-loop) to handle arbitrary-dimensional input (see todo.md)
 
                 # Approximate every infinite vertex of the common ridge of this adjacent region apir
                 for vert_idx in np.where(ridge == -1):  # Single iteration in 2D case
@@ -113,22 +114,18 @@ class VoronoiCell:
                     direction = np.sign(np.dot(midpoint - center, normal)) * normal
                     far_point = VoronoiCell.vor.vertices[finite_end_ridge_vertex] + direction * ptp_bound.max()  # Approximation of the infinite vertex
 
-                    ridge_hyperplane_vertices[vert_idx] = far_point  # Save the approximation into the index of the infinite vertex in the corresponding ridge's vertices
+                    # Save the approximation into the index of the infinite vertex in the corresponding ridge's vertices
+                    ridge_hyperplane_vertices[vert_idx] = far_point
                     
                 ridges.append( VoronoiCell.get_hyperplane(centroid, ridge_hyperplane_vertices) )
-                neighbors.append(adj_region_pair[ int(not region_pair_idx) ])
+                neighbors.append( adj_region_pair[ int(not region_pair_idx) ] )
 
         return ridges, neighbors
 
     @staticmethod
-    def get_hyperplane(centroid, hyperplane_vertices, epsilon=0.001): # Given a ridge, return it as a hyperplane by solving Ax=b (where x is the coefficients) using least squares
-        # Arbitrary-dimension case
-        # A = np.array(vertices[ridge]) # Array of vertices
-        # b = np.ones(A.shape[0])
-        # coefficients = np.linalg.pinv(A) @ b # TODO: compare with np.linalg.lstsq for computing hyperplane from vertices
-        # constant = 1
-        
-        # 2D case
+    def get_hyperplane(centroid, hyperplane_vertices, epsilon=0.001):
+        """Return a hyperplane representation of the given ridge."""
+        # TODO: Scale implementation to handle arbitrary-dimensional input (see todo.md)
         y_delta = hyperplane_vertices[1][1] - hyperplane_vertices[0][1]
         x_delta = hyperplane_vertices[1][0] - hyperplane_vertices[0][0]
         assert not (x_delta == 0 and y_delta == 0)
@@ -139,30 +136,12 @@ class VoronoiCell:
 
         constant = np.dot(coeffs, hyperplane_vertices[0])
         
-        # TODO: correct constant adjustments (need to make entire hyperplane move in epsilon magnitude towards centroid)
-        assert np.dot(coeffs, centroid) != constant  # Centroid should not lie on VoronoiCell ridge; if it does, its an implementation issue
+        # TODO: Fix inaccurate hyperplane offset (see todo.md)
         if np.dot(coeffs, centroid) < constant: 
             inequality_type = MarabouCore.Equation.LE
-            constant -= epsilon * np.linalg.norm(coeffs) # TODO, always slightly over epsilon
+            constant -= epsilon * np.linalg.norm(coeffs)
         elif np.dot(coeffs, centroid) > constant:
             inequality_type = MarabouCore.Equation.GE
-            # constant += epsilon
             constant += epsilon * np.linalg.norm(coeffs)
     
         return Hyperplane(coeffs, constant, inequality_type)
-    
-    @staticmethod
-    def extract_class_boundary(centroid_cell_dict):
-        SLOPE_DEVIATION_THRESHOLD = 0.1  # Maximum deviation in slope contributed by a new vertex before new ridge is created
-
-        boundary_ridges = []
-        # TODO: eliminate unnecessary zig-zagging of ridges in 2D case
-
-        curr_slope = 0.0
-        for centr, cell in centroid_cell_dict.items():
-            for neighbor in cell.neighbors:
-                # find the neighbor that extends along the class boundary
-                # if such neighbors exist, add to one linked list (single-link state like markov model is opposite class segment)
-                # linked list per class
-                pass
-        return boundary_ridges

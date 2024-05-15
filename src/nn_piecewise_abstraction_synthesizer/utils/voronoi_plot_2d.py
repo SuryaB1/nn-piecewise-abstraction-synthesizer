@@ -1,3 +1,7 @@
+"""
+Adapted from _plotutils.py from scipy.spatial (https://github.com/scipy/scipy/blob/main/scipy/spatial/_plotutils.py)
+"""
+
 import numpy as np
 from scipy._lib.decorator import decorator as _decorator
 

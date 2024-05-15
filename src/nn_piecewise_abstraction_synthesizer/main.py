@@ -16,23 +16,22 @@ from maraboupy import MarabouCore
 from maraboupy import MarabouUtils
 
 # Test cases
-# TF_NN_FILENAME = "saved_models/sign_classif_nn_no-softmax" # 1D input
-# TF_NN_FILENAME = "saved_models/unit-sqr_classif_nnet_no-sigmoid" # 2D input
-TF_NN_FILENAME = "saved_models/diagonal-split_classif_nnet" # 2D input, non-rectangular case
-# TF_NN_FILENAME = "saved_models/concave-poly_classif_nnet" # 2D input, non-rectangular case
-# TF_NN_FILENAME = "saved_models/3d-unit-sqr_classif_nnet_no-sigmoid" # 3D input
-# TF_NN_FILENAME = "saved_models/4d-unit-sqr_classif_nnet_no-sigmoid" # 4D input
+# TF_NN_FILENAME = "../../data/inputs/models/saved_models/sign_classif_nn_no-softmax" # 1D input
+# TF_NN_FILENAME = "../../data/inputs/models/saved_models/unit-sqr_classif_nnet_no-sigmoid" # 2D input
+TF_NN_FILENAME = "../../data/inputs/models/saved_models/diagonal-split_classif_nnet" # 2D input, non-rectangular case
+# TF_NN_FILENAME = "../../data/inputs/models/saved_models/concave-poly_classif_nnet" # 2D input, non-rectangular case
+# TF_NN_FILENAME = "../../data/inputs/models/saved_models/3d-unit-sqr_classif_nnet_no-sigmoid" # 3D input
+# TF_NN_FILENAME = "../../data/inputs/models/saved_models/4d-unit-sqr_classif_nnet_no-sigmoid" # 4D input
 
-DEBUG = True
-OUTPUT_TESSELLATION_FORMATION_GIF = False
-STARTING_POINTS_PROVIDED = True
+DEBUG = True  # Set to true to print all debug output printed using debug_log("...", ...)
+OUTPUT_TESSELLATION_FORMATION_GIF = True  # Set to true to output a GIF of the CEGIS process
+STARTING_POINTS_PROVIDED = True  # Set to true if providing sample datapoints for CEGIS to start from
 
 # Bounds on all axes of input space for which piecewise mapping is synthesized
-SYNTHESIS_LOWER_BOUND = -100
-SYNTHESIS_UPPER_BOUND = 100
+SYNTHESIS_LOWER_BOUND = -10
+SYNTHESIS_UPPER_BOUND = 10
 
-MIN_COUNTEREX_DISTANCE_TO_RIDGE = 1  # Minimum distance a counterexample can be from a segment boundary to be considered (around 0.5 seems to be default from Marabou without using this param)
-MIN_COUNTEREX_DIST_TO_CENTR = 0.01 # min for lib: 0.0001
+MIN_COUNTEREX_DIST_TO_CENTR = 0.01  # Minimum distance a newly found counterexample can be from an existing centroid (must be ≥ 0.0001, since otherwise scipy.spatial.Voronoi will ignore this centroid causing further issues)
 
 def clear_directory(directory="tess_form_gif"):
     files = glob.glob(os.path.join(directory, '*'))
@@ -42,7 +41,6 @@ def clear_directory(directory="tess_form_gif"):
 def debug_log(*str):
     if DEBUG:
         print("[DEBUG]", *str)
-        pass
 
 # Assumes input data is flattened to single dimensional Python list, and output class is integer
 def read_init_datapoints(filename="", input_dim=0):
@@ -68,13 +66,19 @@ def read_init_datapoints(filename="", input_dim=0):
             input_output_dict[input_coord] = output
     return input_output_dict
 
+def plot_piecewise_mappings(centroid_cell_map):
+    voronoi_plot_2d_colored(VoronoiCell.vor, centroid_cell_map=centroid_cell_map)
+    class_boundary_x = np.linspace(SYNTHESIS_LOWER_BOUND*100, SYNTHESIS_UPPER_BOUND*100, 10)
+    class_boundary_y = class_boundary_x
+    plt.plot(class_boundary_x, class_boundary_y, color='g')
+
 def form_query(network, output_var, curr_segment):
     debug_log("PRINTING QUERY...")
     network.clearProperty()
 
     omit_close_counterex_disjunction = []  # Inequalities to prevent counterexamples to close to curr_segment's centroid
 
-    print("Disjunctions:")
+    debug_log("Disjunctions:")
     # Add inequalities for synthesis input space bounds to query
     for var in network.inputVars[0][0]:
         network.setLowerBound(var, SYNTHESIS_LOWER_BOUND)
@@ -84,22 +88,21 @@ def form_query(network, output_var, curr_segment):
         eq1 = MarabouUtils.Equation(MarabouCore.Equation.LE)
         eq1.addAddend(1.0, var)
         eq1.setScalar(curr_segment.centroid[var] - MIN_COUNTEREX_DIST_TO_CENTR)
-        print(f"x{var} <= {curr_segment.centroid[var] - MIN_COUNTEREX_DIST_TO_CENTR}")
+        debug_log(f"x{var} <= {curr_segment.centroid[var] - MIN_COUNTEREX_DIST_TO_CENTR}")
 
         eq2 = MarabouUtils.Equation(MarabouCore.Equation.GE)
         eq2.addAddend(1.0, var)
         eq2.setScalar(curr_segment.centroid[var] + MIN_COUNTEREX_DIST_TO_CENTR)
-        print(f"x{var} >= {curr_segment.centroid[var] + MIN_COUNTEREX_DIST_TO_CENTR}")
+        debug_log(f"x{var} >= {curr_segment.centroid[var] + MIN_COUNTEREX_DIST_TO_CENTR}")
         
         omit_close_counterex_disjunction.extend([[eq1], [eq2]])
-        # network.addDisjunctionConstraint([[eq1], [eq2]])  # Move adding disjunction constraint up here from two lines below for [-100,100] case workaround for non-terminating query
 
     network.addDisjunctionConstraint(omit_close_counterex_disjunction)
 
-    print("Inequalities:")
+    debug_log("Inequalities:")
     # Add inequalities for current segment's ridges
     for ridge in curr_segment.ridges:
-        print(ridge)
+        debug_log(ridge)
         eq = MarabouUtils.Equation(ridge.type)
 
         input_vars = network.inputVars[0][0]
@@ -107,22 +110,16 @@ def form_query(network, output_var, curr_segment):
             eq.addAddend(ridge.coeffs[var], var)
         eq.setScalar(ridge.constant)
 
-        network.addEquation(eq, isProperty=True)  # Need to isProperty set to true to be able to clear it with network.clearProperty()
+        network.addEquation(eq, isProperty=True)  # Need to set isProperty to true to be able to clear this property with network.clearProperty()
     
     # Add equality expressing class assignment for current segment
     eq = MarabouUtils.Equation()
     eq.addAddend(1, output_var)
-    eq.setScalar(int(not curr_segment.output)) # TODO: works only for binary classification case, need to change to LE constant - 1, and GE constant + 1 for multiple classes
+    eq.setScalar(int(not curr_segment.output)) # TODO: Scale implementation to handle more than two output classes (see todo.md), need to change to LE constant - 1, and GE constant + 1 for multiple classes
     network.addEquation(eq, isProperty=True)
     print(f"output_var=={int(not curr_segment.output)}")
 
 def main():
-    # NOTE #1: Run program with Python version X.Y where X and Y are defined in MarabouCore.cpython-XY-darwin.so 
-    #   located in the separate directory Marabou/maraboupy/, which can be obtained during maraboupy build process
-
-    # NOTE #2: MarabouUtils.Equation() may be deprecated and replaced with MarabouCore.Equation() in the near future; 
-    #   at the moment, MarabouUtils.Equation() is what works with MarabouNetwork.addEquation(), and, thus, is used in this program
-
     # Read single-output classification neural network into Marabou
     network = Marabou.read_tf(filename = TF_NN_FILENAME, modelType="savedModel_v2")  # Returns MarabouNetworkTF object
     input_vars = network.inputVars[0][0]
@@ -137,26 +134,24 @@ def main():
     min_num_init_datapoints = 4 + (len(input_vars) - 2)  # Minimum number of datapoints needed to compute Voronoi tessellation by scipy.spatial.Voronoi 
     if (STARTING_POINTS_PROVIDED):
         sample_data_filename = "diagonal-split-sample-data.txt" # "diagonal-split_sample-data_structured.txt" # "diagonal-split-sample-data.txt"
-        init_datapoints = read_init_datapoints(f"sample_data/{sample_data_filename}", len(input_vars))  # diagonal-split-sample-data
+        path_to_init_datapoints = "../../data/inputs/init_datapoints/"
+        init_datapoints = read_init_datapoints(f"{path_to_init_datapoints}{sample_data_filename}", len(input_vars))
         num_init_datapoints = len(init_datapoints)
         if num_init_datapoints > 0 and num_init_datapoints < min_num_init_datapoints:
             sys.exit(f"ERROR: At least {min_num_init_datapoints} input datapoints are needed, but only {len(init_datapoints)} were given.")
     else:  # If no initial datapoints are provided, sample initial datapoints in input space
-        for i in range(min_num_init_datapoints):  # min_num_init_datapoints 100
+        for _ in range(min_num_init_datapoints):
             init_centroid = tuple([ round(random.uniform(SYNTHESIS_LOWER_BOUND, SYNTHESIS_UPPER_BOUND), 2) for d in range( len(input_vars) ) ])
             while init_centroid in init_datapoints:  # Re-generate sample until unique sample found
                 init_centroid = tuple([ round(random.uniform(SYNTHESIS_LOWER_BOUND, SYNTHESIS_UPPER_BOUND), 2) for d in range( len(input_vars) ) ])
 
-            # Add noise to centroid (since scipy.spatial.Voronoi is not compatible with points being co-circular/co-spherical)
-            # random_idx_for_noise = random.randint(0, len(input_vars) - 1)  # Select a dimension of the centroid to receive noise
-            # random_noise_offset = random.uniform(-1, 1)  # Compute noise to apply to centroid
-            # coord[random_idx_for_noise] += random_noise_offset
-
             # Compute output value of centroid
-            network.clearProperty()  # Not sure if needed for evaluateWithMarabou (TODO: verify)
+            network.clearProperty()
             init_output = int(network.evaluateWithMarabou(init_centroid)[0][0]) # Non-terminating with init_output = network.evaluateWithMarabou(init_centroid) # array([[0.]]) or array([[1.]])
             init_datapoints[init_centroid] = init_output
-    print(init_datapoints)
+    
+    debug_log(init_datapoints)
+    
     # Compute initial Voronoi Tessellation with initial datapoints
     try:
         new_cells = VoronoiCell.compute_voronoi_tessellation(init_datapoints)
@@ -174,14 +169,10 @@ def main():
         incomplete_segments.append(cell.centroid)
         centroid_cell_map[cell.centroid] = cell
 
-    debug_log("Populated data structures. Beginning CEGIS loop...")
-
     plt.rcParams["figure.figsize"] = (7, 7)
-    voronoi_plot_2d_colored(VoronoiCell.vor, centroid_cell_map=centroid_cell_map)
-    class_boundary_x = np.linspace(SYNTHESIS_LOWER_BOUND*100, SYNTHESIS_UPPER_BOUND*100, 100)
-    class_boundary_y = class_boundary_x
-    plt.plot(class_boundary_x, class_boundary_y, color='g')
+    plot_piecewise_mappings(centroid_cell_map)  # Plot initial Voronoi tessellation
 
+    # Set up GIF output if applicable
     if OUTPUT_TESSELLATION_FORMATION_GIF:
         dirname = "tess_form_gif"
         if not os.path.exists(dirname):
@@ -194,15 +185,19 @@ def main():
         tess_form_gif_fnames.append(output_plot_filename)
         plt.savefig(output_plot_filename)
 
+    debug_log("Initialized data structures. Beginning CEGIS loop...")
+
     # CEGIS loop
-    while incomplete_segments: # TODO: set to just see front instead of pop to be more efficient
+    while incomplete_segments:
         curr_segment = incomplete_segments.pop()
         debug_log("Current segment:", curr_segment)
 
-        # Query Marabou for counterexample within segment (once query times out, attempt query again to get lucky with random branching order)
+        # Query Marabou for counterexample within segment 
+        # (once query times out, attempt query again to get lucky 
+        #   with random branching order; see Issue #783 in docs/marabou_issues.md)
         exitCode = "TIMEOUT"
         query_timeout = 2  # seconds
-        while exitCode[0] == "T":  # TODO: put while loop just around network.solve() call
+        while exitCode[0] == "T": 
             if query_timeout > 2:
                 debug_log(f"QUERY TIMED OUT. Requerying with timeut of {query_timeout} seconds...")
             debug_log("FORMING QUERY")
@@ -213,10 +208,10 @@ def main():
             query_timeout *= 2
         debug_log("QUERIED")
 
-        # Split current segment if counterexample exists (not doing this anymore since Marabou has its own min precision: and counterexample is not too close to segment boundary)
+        # Split current segment if counterexample exists 
         if len(vals):
             counterex_centroid = tuple([float(vals[var]) for var in input_vars])  # Convert Marabou counterexample format to coordinate
-            # if centroid_cell_map[curr_segment].compute_dist_to_farthest_ridge(counterex_centroid) > MIN_COUNTEREX_DISTANCE_TO_RIDGE:
+
             debug_log("Splitting segment", curr_segment, "with counterexample", counterex_centroid)
             incomplete_segments.append(curr_segment)
             incomplete_segments.append(counterex_centroid)
@@ -227,23 +222,15 @@ def main():
                 centroid_cell_map[cell.centroid] = cell
 
             if OUTPUT_TESSELLATION_FORMATION_GIF:
-                voronoi_plot_2d_colored(VoronoiCell.vor, centroid_cell_map=centroid_cell_map)
-                class_boundary_x = np.linspace(SYNTHESIS_LOWER_BOUND*1000, SYNTHESIS_UPPER_BOUND*1000, 10)
-                class_boundary_y = class_boundary_x
-                plt.plot(class_boundary_x, class_boundary_y, color='g')
+                plot_piecewise_mappings(centroid_cell_map)
 
                 cegis_iteration += 1
                 output_plot_filename = f'tess_form_gif/cegis_iteration_{cegis_iteration}.png'
                 tess_form_gif_fnames.append(output_plot_filename)
                 plt.savefig(output_plot_filename)
 
-    # boundary_ridges = VoronoiCell.extract_class_boundary()
-
-    voronoi_plot_2d_colored(VoronoiCell.vor, centroid_cell_map=centroid_cell_map)
-    class_boundary_x = np.linspace(SYNTHESIS_LOWER_BOUND*100, SYNTHESIS_UPPER_BOUND*100, 10)
-    class_boundary_y = class_boundary_x
-    plt.plot(class_boundary_x, class_boundary_y, color='g')
-
+    plot_piecewise_mappings(centroid_cell_map)
+    
     if OUTPUT_TESSELLATION_FORMATION_GIF:
         image_np_arrays = [imageio.imread(fname) for fname in tess_form_gif_fnames]
         imageio.mimsave('tess_form_gif/tessellation_formation.gif', image_np_arrays)
