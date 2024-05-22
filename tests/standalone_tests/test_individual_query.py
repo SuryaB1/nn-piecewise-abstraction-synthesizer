@@ -26,7 +26,7 @@ from maraboupy import Marabou
 from maraboupy import MarabouCore
 from maraboupy import MarabouUtils
 
-TF_NN_FILENAME = "saved_models/diagonal-split_classif_nnet"
+TF_NN_FILENAME = "../../data/inputs/models/saved_models/y=x_split_classif_nn"
 
 ### Read network
 network = Marabou.read_tf(filename = TF_NN_FILENAME, modelType="savedModel_v2")

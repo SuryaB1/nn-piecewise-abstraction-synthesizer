@@ -4,7 +4,7 @@ from maraboupy import MarabouCore
 from maraboupy import MarabouNetwork
 from maraboupy import MarabouUtils
 
-TF_NN_FILENAME = "saved_models/three-in_two-in_nnet" # "saved_models/basic_nnet" # "saved_models/reluplex_fig2_nnet"
+TF_NN_FILENAME = "../../data/inputs/models/saved_models/three_in_two_out_nn" # "basic_nn" # "reluplex_paper_fig2_nn"
 SCALAR_BOUND = 10
 
 def get_next_candidate(network, comb, outputVarIdx):

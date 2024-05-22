@@ -16,12 +16,12 @@ from maraboupy import MarabouCore
 from maraboupy import MarabouUtils
 
 # Test cases
-# TF_NN_FILENAME = "../../data/inputs/models/saved_models/sign_classif_nn_no-softmax" # 1D input
-# TF_NN_FILENAME = "../../data/inputs/models/saved_models/unit-sqr_classif_nnet_no-sigmoid" # 2D input
-TF_NN_FILENAME = "../../data/inputs/models/saved_models/diagonal-split_classif_nnet" # 2D input, non-rectangular case
-# TF_NN_FILENAME = "../../data/inputs/models/saved_models/concave-poly_classif_nnet" # 2D input, non-rectangular case
-# TF_NN_FILENAME = "../../data/inputs/models/saved_models/3d-unit-sqr_classif_nnet_no-sigmoid" # 3D input
-# TF_NN_FILENAME = "../../data/inputs/models/saved_models/4d-unit-sqr_classif_nnet_no-sigmoid" # 4D input
+# TF_NN_FILENAME = "../../data/inputs/models/saved_models/sign_classif_nn" # 1D input
+# TF_NN_FILENAME = "../../data/inputs/models/saved_models/2D_unit_sqr_classif_nn" # 2D input
+TF_NN_FILENAME = "../../data/inputs/models/saved_models/y=x_split_classif_nn" # 2D input, non-rectangular class boundary test case
+# TF_NN_FILENAME = "../../data/inputs/models/saved_models/concave_polygon_classif_nn" # 2D input, non-rectangular class boundary test case
+# TF_NN_FILENAME = "../../data/inputs/models/saved_models/3D-unit-sqr_classif_nn" # 3D input
+# TF_NN_FILENAME = "../../data/inputs/models/saved_models/4D-unit-sqr_classif_nn" # 4D input
 
 DEBUG = True  # Set to true to print all debug output printed using debug_log("...", ...)
 OUTPUT_TESSELLATION_FORMATION_GIF = True  # Set to true to output a GIF of the CEGIS process
@@ -133,7 +133,7 @@ def main():
     init_datapoints = dict()
     min_num_init_datapoints = 4 + (len(input_vars) - 2)  # Minimum number of datapoints needed to compute Voronoi tessellation by scipy.spatial.Voronoi 
     if (STARTING_POINTS_PROVIDED):
-        sample_data_filename = "diagonal-split-sample-data.txt" # "diagonal-split_sample-data_structured.txt" # "diagonal-split-sample-data.txt"
+        sample_data_filename = "y=x_split_sample_data.txt" # "y=x_split_arranged_data.txt"
         path_to_init_datapoints = "../../data/inputs/init_datapoints/"
         init_datapoints = read_init_datapoints(f"{path_to_init_datapoints}{sample_data_filename}", len(input_vars))
         num_init_datapoints = len(init_datapoints)
@@ -147,7 +147,7 @@ def main():
 
             # Compute output value of centroid
             network.clearProperty()
-            init_output = int(network.evaluateWithMarabou(init_centroid)[0][0]) # Non-terminating with init_output = network.evaluateWithMarabou(init_centroid) # array([[0.]]) or array([[1.]])
+            init_output = int(network.evaluateWithMarabou(init_centroid)[0][0])
             init_datapoints[init_centroid] = init_output
     
     debug_log(init_datapoints)

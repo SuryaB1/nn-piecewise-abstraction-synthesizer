@@ -31,12 +31,13 @@ class Hyperplane:
 class VoronoiCell:
     """A class that represents a Voronoi tessellation with instances representing individual cells."""
     
-    vor = None  # Voronoi tessellation object
+    vor = None  # The current working Voronoi tessellation object
+
     def __init__(self, centroid = (), ridges = [], output = 0, neighbors = []):
-        self.centroid = centroid # Tuple of coordinate component floats
+        self.centroid = centroid  # Tuple of floats representing an input coordinate
         self.ridges = ridges  # List of Hyerplane objects
-        self.output = output  # Int
-        self.neighbors = neighbors  # List of centroid indices
+        self.output = output  # Integer representing output class that centroid belongs to
+        self.neighbors = neighbors  # List of centroids that make up the neighboring cells
 
     def __str__(self):
         return f''
@@ -49,6 +50,21 @@ class VoronoiCell:
     
     @staticmethod
     def compute_voronoi_tessellation(input_output_dict, add_points=False, centroid_cell_map={}):
+        """Processes datapoints into Voronoi cells of either a current or new tessellation.
+
+        To start a new Voronoi tessellation, only input_output_dict needs to be passed in. To add points to the
+        current Voronoi tessellation, add_points should be set to True and the data structure containing 
+        all cells already in the tessellation (centroid_cell_map) must be passed in, in addition to passing in
+        input_output_dict.
+        
+        Arguments:
+        input_output_dict -- dict of datapoints where keys are centroids and values are corresponding 
+                             output classes
+        add_points -- bool denoting whether datapoints are being added to current tesselation (True), 
+                      or used to create new tessellation (default False)
+        centroid_cell_map -- a dict where all keys are centroids in the tessellation and values are 
+                             VoronoiCell() objects (default {})
+        """
         # Obtain updated Voronoi tessellation object
         new_centroids = list(input_output_dict.keys())
         first_new_centroid_idx = 0
@@ -102,7 +118,7 @@ class VoronoiCell:
 
                 # TODO: Scale implementation (below for-loop) to handle arbitrary-dimensional input (see todo.md)
 
-                # Approximate every infinite vertex of the common ridge of this adjacent region apir
+                # Approximate every infinite vertex of the common ridge of this adjacent region pair
                 for vert_idx in np.where(ridge == -1):  # Single iteration in 2D case
                     finite_end_ridge_vertex = ridge[ridge >= 0][0]  # Finite end of line segment ridge in 2D case
 
