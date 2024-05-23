@@ -17,4 +17,4 @@ input = np.array([-1.0])
 output = model.predict(input)
 print(output)
 
-tf.saved_model.save(model, '../saved_models/sign_classif_nn_using_softmax')
+tf.saved_model.save(model, 'data/inputs/models/saved_models/sign_classif_nn_using_softmax')

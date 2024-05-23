@@ -1,6 +1,6 @@
 # nn-piecewise-abstraction-synthesizer
 
-The goal of this project is to synthesize an abstraction of a classification neural network using counterexample-guided inductive synthesis (CEGIS), which is a formal method, and the Marabou neural network verification tool ([neuralnetworkverification.github.io](neuralnetworkverification.github.io)).
+The goal of this project is to synthesize an abstraction of a classification neural network using counterexample-guided inductive synthesis (CEGIS) and the Marabou neural network verification tool ([neuralnetworkverification.github.io](neuralnetworkverification.github.io)).
 
 As of May 2024, the project is able to synthesize unrefined piecewise abstractions of binary classification neural networks with some inefficiencies and limited testing. Please see [todo.md](docs/todo.md) for next steps.
 

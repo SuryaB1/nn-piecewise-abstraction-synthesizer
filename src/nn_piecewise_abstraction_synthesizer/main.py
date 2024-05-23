@@ -16,12 +16,12 @@ from maraboupy import MarabouCore
 from maraboupy import MarabouUtils
 
 # Test cases
-# TF_NN_FILENAME = "../../data/inputs/models/saved_models/sign_classif_nn" # 1D input
-# TF_NN_FILENAME = "../../data/inputs/models/saved_models/2D_unit_sqr_classif_nn" # 2D input
-TF_NN_FILENAME = "../../data/inputs/models/saved_models/y=x_split_classif_nn" # 2D input, non-rectangular class boundary test case
-# TF_NN_FILENAME = "../../data/inputs/models/saved_models/concave_polygon_classif_nn" # 2D input, non-rectangular class boundary test case
-# TF_NN_FILENAME = "../../data/inputs/models/saved_models/3D-unit-sqr_classif_nn" # 3D input
-# TF_NN_FILENAME = "../../data/inputs/models/saved_models/4D-unit-sqr_classif_nn" # 4D input
+# TF_NN_FILENAME = "data/inputs/models/saved_models/sign_classif_nn" # 1D input
+# TF_NN_FILENAME = "data/inputs/models/saved_models/2D_unit_sqr_classif_nn" # 2D input
+TF_NN_FILENAME = "data/inputs/models/saved_models/y=x_split_classif_nn" # 2D input, non-rectangular class boundary test case
+# TF_NN_FILENAME = "data/inputs/models/saved_models/concave_polygon_classif_nn" # 2D input, non-rectangular class boundary test case
+# TF_NN_FILENAME = "data/inputs/models/saved_models/3D-unit-sqr_classif_nn" # 3D input
+# TF_NN_FILENAME = "data/inputs/models/saved_models/4D-unit-sqr_classif_nn" # 4D input
 
 DEBUG = True  # Set to true to print all debug output printed using debug_log("...", ...)
 OUTPUT_TESSELLATION_FORMATION_GIF = True  # Set to true to output a GIF of the CEGIS process
@@ -133,8 +133,8 @@ def main():
     init_datapoints = dict()
     min_num_init_datapoints = 4 + (len(input_vars) - 2)  # Minimum number of datapoints needed to compute Voronoi tessellation by scipy.spatial.Voronoi 
     if (STARTING_POINTS_PROVIDED):
-        sample_data_filename = "y=x_split_sample_data.txt" # "y=x_split_arranged_data.txt"
-        path_to_init_datapoints = "../../data/inputs/init_datapoints/"
+        sample_data_filename = "y=x_split_arranged_data.txt" #  "y=x_split_sample_data.txt" # 
+        path_to_init_datapoints = "data/inputs/init_datapoints/"
         init_datapoints = read_init_datapoints(f"{path_to_init_datapoints}{sample_data_filename}", len(input_vars))
         num_init_datapoints = len(init_datapoints)
         if num_init_datapoints > 0 and num_init_datapoints < min_num_init_datapoints:

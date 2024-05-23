@@ -14,6 +14,10 @@ To contribute to the development of this project, please follow these steps:
 3. **Install Required Dependencies**
    - Run `pip install -r requirements.txt` to install all necessary dependencies.
 
+4. **Test Execution**
+   - After activating your virtual environment, run `python src/nn_piecewise_abstraction_synthesizer/main.py` from the top-level directory.
+   - After several seconds, you should see a directory called `tess_form_gif/` in the top-level directory containing the files `cegis_iteration_0.png` and `tessellation_formation.gif`. The PNG and GIF should both show the same plot of three red points, three blue points, two yellowish-green points, two dashed lines, one solid green line, and two axes with labels from -10.0 to 10.0.
+
 You are now ready to start development. For the next steps, please refer to the [todo.md](todo.md) file.
 
 ### Additional Notes for Development

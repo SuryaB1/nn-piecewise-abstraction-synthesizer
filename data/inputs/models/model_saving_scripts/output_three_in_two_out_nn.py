@@ -17,4 +17,4 @@ input = np.array([[2.0, 3.0, 2.0]])
 output = model.predict(input)
 print(output)
 
-tf.saved_model.save(model, '../saved_models/three_in_two_out_nn')
+tf.saved_model.save(model, 'data/inputs/models/saved_models/three_in_two_out_nn')

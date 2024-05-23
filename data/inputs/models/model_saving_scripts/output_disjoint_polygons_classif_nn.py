@@ -74,4 +74,4 @@ input = np.array([[2, 0.5]])
 output = model.predict(input)
 print(output)
 
-tf.saved_model.save(model, '../saved_models/disjoint-polys_classif_nnet')
+tf.saved_model.save(model, 'data/inputs/models/saved_models/disjoint_polygons_classif_nn')

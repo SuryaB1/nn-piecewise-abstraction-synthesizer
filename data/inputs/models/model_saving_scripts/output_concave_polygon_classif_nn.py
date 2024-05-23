@@ -57,7 +57,7 @@ model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
 # output = model.predict(input)
 # print(output)
 
-# tf.saved_model.save(model, '../saved_models/concave_polygon_classif_nn')
+tf.saved_model.save(model, 'data/inputs/models/saved_models/concave_polygon_classif_nn')
 
 # Plot the piecewise segmentation of the input space with this neural network
 BOUND = 10

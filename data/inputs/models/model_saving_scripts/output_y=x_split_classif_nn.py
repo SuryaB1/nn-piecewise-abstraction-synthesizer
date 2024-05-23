@@ -25,8 +25,9 @@ model.compile(optimizer='adam', loss='mse', metrics=['accuracy'])
 # output = model.predict(input)
 # print(output)
 
-# tf.saved_model.save(model, '../saved_models/y=x_split_classif_nn')
+tf.saved_model.save(model, 'data/inputs/models/saved_models/y=x_split_classif_nn')
 
+# Plot the piecewise segmentation of the input space with this neural network
 BOUND = 10
 X, Y = np.meshgrid(np.arange(-BOUND, BOUND+1), np.arange(-BOUND, BOUND+1))
 inputs = np.column_stack((X.ravel(), Y.ravel()))

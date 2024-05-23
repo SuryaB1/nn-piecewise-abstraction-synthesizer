@@ -17,4 +17,4 @@ input = np.array([[1.1, 1]])
 output = model.predict(input)
 print(output)
 
-tf.saved_model.save(model, '../saved_models/2D_unit_sqr_classif_nn_using_sigmoid')
+tf.saved_model.save(model, 'data/inputs/models/saved_models/2D_unit_sqr_classif_nn_using_sigmoid')

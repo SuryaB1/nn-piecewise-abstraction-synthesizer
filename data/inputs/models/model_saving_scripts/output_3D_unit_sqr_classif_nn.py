@@ -21,4 +21,4 @@ input = np.array([[0, 0, -1]])
 output = model.predict(input)
 print(output)
 
-tf.saved_model.save(model, '../saved_models/3D_unit_sqr_classif_nn')
+tf.saved_model.save(model, 'data/inputs/models/saved_models/3D_unit_sqr_classif_nn')
